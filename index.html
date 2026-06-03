@@ -388,9 +388,18 @@ function onePuzzle(words, N, shuffle){
       } }
     return best;
   }
-  function bestSeed(word){ let best=null;
+  function bestSeed(word){
+    // 새 그룹은 기존 글자 클러스터에 '가깝게' 배치 → 흩어지지 않고 촘촘한 덩어리 유지
+    // (전체 위치 균형은 마지막 centerLayout_ 가 가운데로 맞춰줌)
+    const filled=[]; for(let r=0;r<R;r++)for(let c=0;c<C;c++) if(grid[r][c]!==null) filled.push([r,c]);
+    let best=null;
     for(let r=0;r<R;r++) for(let c=0;c<C;c++){ ['across','down'].forEach(dir=>{ const res=canPlace(word,r,c,dir);
-      if(res===0){ const s=-(r*C+c)+(shuffle?Math.random()*4:0); if(!best||s>best.score)best={r,c,dir,score:s}; } }); }
+      if(res===0){
+        let d=99; for(let i=0;i<filled.length;i++){ const dd=Math.abs(r-filled[i][0])+Math.abs(c-filled[i][1]); if(dd<d)d=dd; }
+        if(!filled.length) d=0;
+        const s=-d+(shuffle?Math.random()*2:0);   // 거리 작을수록(가까울수록) 우선
+        if(!best||s>best.score)best={r,c,dir,score:s};
+      } }); }
     return best;
   }
   let pool=words.slice().sort((a,b)=>b.answer.length-a.answer.length);
@@ -412,12 +421,31 @@ function onePuzzle(words, N, shuffle){
   const total=placed.reduce((s,w)=>s+w.answer.length,0);
   return { placed, unplaced:pool, crossings: total-filled };
 }
+function bbox_(placed){
+  let minR=1e9,maxR=-1e9,minC=1e9,maxC=-1e9;
+  placed.forEach(w=>{ const er=w.direction==='down'?w.row+w.answer.length-1:w.row, ec=w.direction==='across'?w.col+w.answer.length-1:w.col;
+    if(w.row<minR)minR=w.row; if(er>maxR)maxR=er; if(w.col<minC)minC=w.col; if(ec>maxC)maxC=ec; });
+  return {minR,maxR,minC,maxC,h:maxR-minR+1,w:maxC-minC+1};
+}
+function centerLayout_(placed,N){
+  if(!placed.length) return;
+  const b=bbox_(placed);
+  const offR=Math.floor((N-b.h)/2)-b.minR, offC=Math.floor((N-b.w)/2)-b.minC;
+  placed.forEach(w=>{ w.row+=offR; w.col+=offC; });
+}
 function generateLayout(wordObjs, N, shuffle){
   let words=wordObjs.filter(w=>w.answer&&w.answer.length>=2&&w.clue.trim()).map(w=>({answer:nfc(w.answer),clue:w.clue}));
   const seen={}; words=words.filter(w=>{ if(seen[w.answer])return false; seen[w.answer]=true; return true; });
   if(!words.length) return {placed:[],unplaced:[]};
-  let best=null; const tries=shuffle?45:30;
-  for(let t=0;t<tries;t++){ const res=onePuzzle(words,N,t>0); const score=res.placed.length*1000+res.crossings; if(!best||score>best.score) best={...res,score}; }
+  let best=null; const tries=shuffle?50:35;
+  for(let t=0;t<tries;t++){
+    const res=onePuzzle(words,N,t>0);
+    const b=bbox_(res.placed);
+    // 많이 배치 > 교차 많음 > 정사각형에 가까움(균형) 순으로 선호
+    const score=res.placed.length*1000 + res.crossings*2 - Math.abs(b.h-b.w);
+    if(!best||score>best.score) best={...res,score};
+  }
+  centerLayout_(best.placed,N);     // 전체를 그리드 가운데로 이동 (상하·좌우 중앙)
   return {placed:best.placed, unplaced:best.unplaced};
 }
 function placeWords(shuffle){
