@@ -249,7 +249,7 @@ function renderGrid(){
     state.inputs[k]=inp;
     inp.addEventListener('focus',()=>onFocusCell(r,c));
     inp.addEventListener('click',()=>onClickCell(r,c));
-    inp.addEventListener('compositionstart',()=>{ state._composing=true; });
+    inp.addEventListener('compositionstart',onCompStart);
     inp.addEventListener('compositionend',(e)=>onCompEnd(e,r,c));
     inp.addEventListener('input',(e)=>onInput(e,r,c));
     inp.addEventListener('keydown',(e)=>onKey(e,r,c));
@@ -258,20 +258,46 @@ function renderGrid(){
 }
 window.addEventListener('resize',()=>{ if(state.model && !state.graded){ const vals=collectAnswers(); renderGrid(); restoreAnswers(vals); if(state.sel) select(state.sel.r,state.sel.c,false); } });
 
-/* ===== 입력 처리 (한글 IME) ===== */
-function onInput(e,r,c){
-  const el=e.target;
-  if(el.value.length>1) el.value=nfc(el.value).slice(-1);
-  if(e.isComposing||state._composing) return;
-  if(state._suppress){ state._suppress=false; return; }
-  if(e.inputType && e.inputType.indexOf('delete')===0) return;
-  if(el.value) advance();
+/* ===== 입력 처리 (한글 IME) =====
+   원칙: 한글 조합 중(composing)에는 칸을 넘기지 않고 기다린다.
+   조합이 끝나 '완성된 글자'가 되면 그때 칸에 넣고 다음 칸으로 이동한다.
+   → 자모 분리(ㅅㅔ) 방지 + 글자 유실 방지 */
+function isSyllable(ch){ return ch>='가' && ch<='힣'; }
+
+function commitValue(r,c,value,kind){
+  value=nfc(value);
+  if(value===''){ return; }
+  const w=currentWord();
+  const cells=w?cellsOf(w):[{r,c}];
+  let idx=cells.findIndex(p=>p.r===r&&p.c===c);
+  if(idx<0) idx=0;
+  // 글자들을 현재 칸부터 순서대로 분배 (완성 글자 유실 없음)
+  let i=0;
+  for(; i<value.length && idx+i<cells.length; i++){
+    const t=cells[idx+i], inp=state.inputs[t.r+'-'+t.c];
+    if(inp) inp.value=value[i];
+  }
+  // 포커스 이동량 결정: IME는 '완성된 음절' 수만큼, 직접입력은 넣은 글자 수만큼
+  let adv;
+  if(kind==='ime'){ adv=0; for(let j=0;j<i;j++){ if(isSyllable(value[j])) adv++; else break; } }
+  else { adv=i; }
+  const nextIdx=idx+adv;
+  if(adv>0 && nextIdx<cells.length){
+    const n=cells[nextIdx];
+    setTimeout(()=>{ if(!state.graded) select(n.r,n.c); },0);   // 조합 정리 후 이동
+  }
 }
+
+function onCompStart(){ state._composing=true; state._suppress=false; }
 function onCompEnd(e,r,c){
-  state._composing=false;
-  const el=e.target; if(el.value.length>1) el.value=nfc(el.value).slice(-1);
-  state._suppress=true;
-  if(el.value) advance();
+  state._composing=false; state._suppress=true;   // 직후 따라오는 input 1회 무시
+  commitValue(r,c,e.target.value,'ime');
+}
+function onInput(e,r,c){
+  if(state._composing||e.isComposing) return;      // 한글 조합 중 → 대기(자모 분리 방지)
+  if(state._suppress){ state._suppress=false; return; }
+  if(e.inputType && e.inputType.indexOf('delete')===0){ return; }  // 삭제는 그대로
+  commitValue(r,c,e.target.value,'direct');
 }
 function onKey(e,r,c){
   const k=e.key;
@@ -282,7 +308,6 @@ function onKey(e,r,c){
   else if(k==='Backspace'){
     const el=state.inputs[r+'-'+c];
     if(el.value===''){ e.preventDefault(); back(); }
-    // 값 있으면 기본 동작(지우기)
   }
   else if(k==='Enter'){ e.preventDefault(); }
 }
