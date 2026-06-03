@@ -214,7 +214,14 @@ function createHiddenInput(){
 }
 
 /* ===== 그리드 ===== */
-function cellSize(){ const N=state.model.cols; const maxW=Math.min(window.innerWidth-40,560); return Math.max(30,Math.min(46,Math.floor(maxW/N))); }
+function cellSize(){
+  const N=state.model.cols;
+  const vw=window.innerWidth;
+  const maxContainer=Math.min(vw-40, 720);        // PC/태블릿에선 더 넓게
+  const maxCell=vw>=700 ? 74 : 46;                 // 큰 화면일수록 칸도 크게
+  let cell=Math.floor(maxContainer/N);
+  return Math.max(28, Math.min(maxCell, cell));    // 5×5·7×7 등 작은 판도 크게
+}
 function renderGrid(){
   const M=state.model, cs=cellSize();
   const grid=$('grid'); grid.style.gridTemplateColumns=`repeat(${M.cols}, ${cs}px)`;
