@@ -469,7 +469,7 @@ function puzzleHTML(qd, showAns, opts){
   h+='</table></div></div>';
   const col=(title,arr,color)=>{ let s=`<div style="flex:1;min-width:230px;"><div style="font-weight:800;border-bottom:2px solid ${color};padding-bottom:5px;margin-bottom:8px;font-size:15px;">${title}</div>`;
     arr.forEach(w=>{ const tail=showAns?`<span style="color:#cc5b3f;font-weight:700;"> (${esc(w.answer)})</span>`:`<span style="color:#b3ac9d;"> (${w.answer.length}글자)</span>`;
-      s+=`<div style="margin-bottom:4px;font-size:13.5px;line-height:1.5;"><b style="color:${color};">${w.label}.</b> ${esc(w.clue)}${tail}</div>`; });
+      s+=`<div style="margin-bottom:4px;font-size:15.5px;line-height:1.5;"><b style="color:${color};">${w.label}.</b> ${esc(w.clue)}${tail}</div>`; });
     return s+'</div>'; };
   h+=`<div style="display:flex;gap:34px;flex-wrap:wrap;text-align:left;">${col('가로 열쇠',across,'#cc5b3f')}${col('세로 열쇠',down,'#2a6f6b')}</div>`;
   return `<div style="font-family:'Pretendard','Malgun Gothic',sans-serif;color:#23201b;">${h}</div>`;
