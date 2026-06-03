@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>가로세로 퀴즈 풀기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{
+  --paper:#f4f1ea; --card:#fffdf8; --ink:#23201b; --ink-soft:#6b655c;
+  --accent:#cc5b3f; --accent-dark:#a8472f; --line:#e2dccf; --line-dk:#c9c0ad;
+  --teal:#2a6f6b; --good:#2f8f57; --good-bg:#e3f3e8; --bad:#c0392b; --bad-bg:#fbe6e2;
+  --sel:#ffe8c2; --inword:#fff6e6; --shadow:0 8px 28px rgba(40,30,15,.10);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{font-family:'Pretendard',sans-serif;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.6;
+  background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:22px 22px;}
+header{background:var(--ink);color:#f4f1ea;padding:0 20px;display:flex;align-items:center;gap:12px;height:58px;position:sticky;top:0;z-index:40;box-shadow:0 2px 14px rgba(0,0,0,.18);}
+.logo{font-family:'Nanum Myeongjo',serif;font-weight:800;font-size:20px;display:flex;align-items:center;gap:9px;}
+.logo .badge{background:var(--teal);color:#fff;font-family:'Pretendard';font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;}
+#timer{margin-left:auto;font-weight:800;font-size:15px;background:rgba(255,255,255,.1);padding:5px 12px;border-radius:9px;letter-spacing:.5px;display:none;}
+main{max-width:860px;margin:0 auto;padding:22px 16px 90px;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:var(--shadow);margin-bottom:18px;}
+.center{text-align:center;}
+h1.qtitle{font-family:'Nanum Myeongjo',serif;font-size:24px;margin:0 0 6px;line-height:1.25;}
+.sub{color:var(--ink-soft);font-size:14px;margin:0 0 20px;}
+.field{display:flex;flex-direction:column;gap:6px;text-align:left;margin-bottom:14px;}
+.field label{font-size:12.5px;font-weight:700;color:var(--ink-soft);}
+.field input{border:1.5px solid var(--line-dk);border-radius:11px;padding:13px 14px;font-size:16px;background:#fff;}
+.field input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(42,111,107,.13);}
+.btn{border:none;border-radius:12px;padding:14px 22px;font-size:16px;font-weight:800;transition:.15s;display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;}
+.btn:active{transform:translateY(1px);}
+.btn-teal{background:var(--teal);color:#fff;}
+.btn-teal:hover{filter:brightness(1.07);}
+.btn-accent{background:var(--accent);color:#fff;}
+.btn-accent:hover{background:var(--accent-dark);}
+.btn-ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line-dk);}
+.btn-row{display:flex;gap:10px;}
+.btn-row .btn{width:auto;flex:1;}
+
+/* 현재 단서 바 */
+#clueBar{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:15px;display:flex;align-items:center;gap:10px;min-height:50px;position:sticky;top:58px;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+#clueBar .badge{font-weight:800;color:#fff;border-radius:7px;padding:3px 9px;font-size:13px;white-space:nowrap;}
+#clueBar.across .badge{background:var(--accent);}
+#clueBar.down .badge{background:var(--teal);}
+#clueBar .txt{flex:1;}
+#clueBar .nav{background:#f1ece0;border:none;width:34px;height:34px;border-radius:9px;font-size:16px;color:var(--ink);flex:none;}
+
+/* 그리드 */
+#gridWrap{display:flex;justify-content:center;overflow-x:auto;padding:4px;margin-bottom:18px;}
+#grid{display:grid;gap:0;border:4px solid #1f1c17;background:#1f1c17;}
+.cell{position:relative;background:#fff;border:1px solid #c9c4b8;}
+.cell.blank{background:#f1f1f1;background-image:repeating-linear-gradient(45deg,#f1f1f1,#f1f1f1 3px,#e4e4e4 3px,#e4e4e4 6px);border:1px solid #ddd;}
+.cell .lbl{position:absolute;top:1px;left:2px;font-size:9px;line-height:1;font-weight:700;pointer-events:none;z-index:2;white-space:nowrap;}
+.cell .lbl .a{color:var(--accent);}
+.cell .lbl .d{color:var(--teal);}
+.cell input{width:100%;height:100%;border:none;background:transparent;text-align:center;font-weight:700;color:var(--ink);padding:0;padding-top:6px;font-family:inherit;}
+.cell input:focus{outline:none;}
+.cell.in-word{background:var(--inword);}
+.cell.sel{background:var(--sel);}
+.cell.correct{background:var(--good-bg)!important;}
+.cell.correct input{color:var(--good);}
+.cell.wrong{background:var(--bad-bg)!important;}
+.cell.wrong input{color:var(--bad);}
+.cell .ans{position:absolute;bottom:0px;right:2px;font-size:10px;font-weight:800;color:var(--good);line-height:1;pointer-events:none;}
+
+/* 단서 목록 */
+.clues{display:flex;gap:24px;flex-wrap:wrap;}
+.cluecol{flex:1;min-width:240px;}
+.cluecol h3{font-size:15px;margin:0 0 8px;padding-bottom:5px;border-bottom:2px solid;}
+.cluecol.a h3{color:var(--accent);border-color:var(--accent);}
+.cluecol.d h3{color:var(--teal);border-color:var(--teal);}
+.clue-item{padding:7px 9px;border-radius:8px;cursor:pointer;font-size:14px;line-height:1.45;}
+.clue-item:hover{background:#f6f1e6;}
+.clue-item.on{background:var(--inword);}
+.clue-item b{margin-right:4px;}
+.clue-item.a b{color:var(--accent);}
+.clue-item.d b{color:var(--teal);}
+
+/* 결과 배너 */
+#result{display:none;border-radius:16px;padding:22px;margin-bottom:18px;text-align:center;color:#fff;}
+#result .score{font-size:44px;font-weight:800;line-height:1;margin:6px 0;}
+#result .detail{font-size:15px;opacity:.95;}
+#result .big{font-size:17px;font-weight:800;margin-bottom:2px;}
+
+.loading{position:fixed;inset:0;background:rgba(244,241,234,.85);display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:200;}
+.loading.show{display:flex;}
+.spinner{width:46px;height:46px;border:5px solid var(--line-dk);border-top-color:var(--teal);border-radius:50%;animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading p{font-weight:700;color:var(--ink-soft);}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--ink);color:#fff;padding:13px 22px;border-radius:12px;font-weight:600;font-size:14px;opacity:0;transition:.3s;z-index:300;box-shadow:0 8px 24px rgba(0,0,0,.25);}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+.empty{text-align:center;padding:50px 20px;color:var(--ink-soft);}
+.empty .big{font-size:34px;margin-bottom:8px;}
+.hide{display:none!important;}
+.submitbar{position:fixed;bottom:0;left:0;right:0;background:rgba(255,253,248,.96);border-top:1px solid var(--line);padding:12px 16px;backdrop-filter:blur(6px);z-index:30;display:none;}
+.submitbar .inner{max-width:860px;margin:0 auto;}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">가로세로<span class="badge">풀기</span></div>
+  <div id="timer">00:00</div>
+</header>
+
+<main>
+  <!-- 시작 화면 -->
+  <section id="startView">
+    <div class="card center">
+      <div id="startBody"><div class="empty">퀴즈를 불러오는 중…</div></div>
+    </div>
+  </section>
+
+  <!-- 풀이 화면 -->
+  <section id="playView" class="hide">
+    <div id="result"></div>
+    <div id="clueBar"><span class="txt" style="color:var(--ink-soft);">칸이나 단서를 눌러 시작하세요</span></div>
+    <div id="gridWrap"><div id="grid"></div></div>
+    <div class="card">
+      <div class="clues">
+        <div class="cluecol a"><h3>가로 열쇠</h3><div id="acrossList"></div></div>
+        <div class="cluecol d"><h3>세로 열쇠</h3><div id="downList"></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="submitbar" id="submitbar"><div class="inner">
+  <div id="submitArea"><button class="btn btn-accent" onclick="submitQuiz()">제출하고 채점 받기</button></div>
+</div></div>
+
+<div class="loading" id="loading"><div class="spinner"></div><p id="loadMsg">처리 중…</p></div>
+<div id="toast"></div>
+
+<script>
+/* ===== 설정 ===== */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyWFSkILmqttqMDeM0xr6XisuoRfzLgCc0Z2h5ujN4ZpPY5N1ES0HVCvVxX-qp3oSSN/exec';
+const KO_LABELS = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+
+/* ===== 상태 ===== */
+const state = { quiz:null, model:null, inputs:{}, sel:null, dir:'across', studentName:'', studentId:'',
+                startTime:0, timerId:null, graded:false };
+
+/* ===== 유틸 ===== */
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function nfc(s){return String(s||'').normalize('NFC');}
+function showLoading(m){ $('loadMsg').textContent=m||'처리 중…'; $('loading').classList.add('show'); }
+function hideLoading(){ $('loading').classList.remove('show'); }
+let toastTimer;
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2600); }
+async function api(payload){
+  const res=await fetch(GAS_URL,{method:'POST',body:JSON.stringify(payload)});
+  const text=await res.text(); let data;
+  try{ data=JSON.parse(text); }catch(e){ throw new Error('서버 응답 오류입니다.'); }
+  if(!data.ok) throw new Error(data.error||'알 수 없는 오류'); return data;
+}
+function getQuizId(){ const m=location.search.match(/[?&]quiz=([^&]+)/); return m?decodeURIComponent(m[1]):''; }
+
+/* ===== 로드 ===== */
+window.addEventListener('load', loadQuiz);
+async function loadQuiz(){
+  const quizId=getQuizId();
+  if(!quizId){ $('startBody').innerHTML='<div class="empty"><div class="big">🔗</div>잘못된 접속이에요.<br>선생님이 주신 링크로 다시 들어와 주세요.</div>'; return; }
+  try{
+    const data=await api({action:'getQuizForPlay',quizId});
+    state.quiz=data.quiz;
+    renderStart();
+  }catch(err){
+    $('startBody').innerHTML=`<div class="empty"><div class="big">⚠️</div>퀴즈를 불러오지 못했어요.<br><span style="font-size:13px;">${esc(err.message)}</span></div>`;
+  }
+}
+function renderStart(){
+  $('startBody').innerHTML=`
+    <h1 class="qtitle">${esc(state.quiz.quizName||'가로세로 퀴즈')}</h1>
+    <p class="sub">학번과 이름을 입력하고 시작하세요 ✏️</p>
+    <div class="field"><label>학번</label><input type="text" id="inId" inputmode="numeric" placeholder="예: 10523" autocomplete="off"></div>
+    <div class="field"><label>이름</label><input type="text" id="inName" placeholder="예: 홍길동" autocomplete="off"></div>
+    <button class="btn btn-teal" onclick="startPlay()">시작하기 →</button>`;
+  $('inId').addEventListener('keydown',e=>{ if(e.key==='Enter') $('inName').focus(); });
+  $('inName').addEventListener('keydown',e=>{ if(e.key==='Enter') startPlay(); });
+}
+
+/* ===== 모델 구성 ===== */
+function buildModel(quiz){
+  const {rows,cols}=quiz.gridSize;
+  const words=quiz.words.map((w,i)=>({direction:w.direction,row:w.row,col:w.col,len:w.length,clue:w.clue,id:i}));
+  const byPos=(a,b)=>a.row-b.row||a.col-b.col;
+  const across=words.filter(w=>w.direction==='across').slice().sort(byPos);
+  const down=words.filter(w=>w.direction==='down').slice().sort(byPos);
+  across.forEach((w,i)=>w.label=String(i+1));
+  down.forEach((w,i)=>w.label=i<KO_LABELS.length?KO_LABELS[i]:('A'+(i+1)));
+  const cell={};
+  words.forEach(w=>{ for(let i=0;i<w.len;i++){ const r=w.direction==='down'?w.row+i:w.row, c=w.direction==='across'?w.col+i:w.col; const k=r+'-'+c;
+    if(!cell[k]) cell[k]={across:null,down:null,aLabel:'',dLabel:''};
+    if(w.direction==='across') cell[k].across=w.id; else cell[k].down=w.id; } });
+  words.forEach(w=>{ const k=w.row+'-'+w.col; if(w.direction==='across') cell[k].aLabel=w.label; else cell[k].dLabel=w.label; });
+  return {rows,cols,words,cell,across,down};
+}
+function cellsOf(w){ const a=[]; for(let i=0;i<w.len;i++){ const r=w.direction==='down'?w.row+i:w.row, c=w.direction==='across'?w.col+i:w.col; a.push({r,c}); } return a; }
+
+/* ===== 시작 ===== */
+function startPlay(){
+  const id=$('inId').value.trim(), name=$('inName').value.trim();
+  if(!id){ toast('학번을 입력하세요.'); $('inId').focus(); return; }
+  if(!name){ toast('이름을 입력하세요.'); $('inName').focus(); return; }
+  state.studentId=id; state.studentName=name;
+  state.model=buildModel(state.quiz);
+  $('startView').classList.add('hide');
+  $('playView').classList.remove('hide');
+  $('submitbar').style.display='block';
+  $('timer').style.display='block';
+  renderGrid(); renderClues();
+  startTimer();
+}
+
+/* ===== 타이머 ===== */
+function startTimer(){
+  state.startTime=Date.now();
+  state.timerId=setInterval(()=>{ const s=Math.floor((Date.now()-state.startTime)/1000); $('timer').textContent=fmt(s); },1000);
+}
+function stopTimer(){ if(state.timerId){ clearInterval(state.timerId); state.timerId=null; } }
+function fmt(sec){ const m=Math.floor(sec/60), s=sec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
+
+/* ===== 그리드 렌더 ===== */
+function cellSize(){
+  const N=state.model.cols;
+  const maxW=Math.min(window.innerWidth-40, 560);
+  return Math.max(28, Math.min(46, Math.floor(maxW/N)));
+}
+function renderGrid(){
+  const M=state.model; const cs=cellSize();
+  const grid=$('grid'); grid.style.gridTemplateColumns=`repeat(${M.cols}, ${cs}px)`;
+  grid.innerHTML=''; state.inputs={};
+  const fontPx=Math.round(cs*0.5);
+  for(let r=0;r<M.rows;r++) for(let c=0;c<M.cols;c++){
+    const k=r+'-'+c; const info=M.cell[k];
+    const div=document.createElement('div');
+    div.style.width=cs+'px'; div.style.height=cs+'px';
+    if(!info){ div.className='cell blank'; grid.appendChild(div); continue; }
+    div.className='cell'; div.dataset.k=k;
+    let lbl=''; if(info.aLabel||info.dLabel){ lbl=`<span class="lbl">${info.aLabel?'<span class="a">'+info.aLabel+'</span>':''}${info.aLabel&&info.dLabel?' ':''}${info.dLabel?'<span class="d">'+info.dLabel+'</span>':''}</span>`; }
+    div.innerHTML=lbl+`<input type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" style="font-size:${fontPx}px;">`;
+    const inp=div.querySelector('input');
+    state.inputs[k]=inp;
+    inp.addEventListener('focus',()=>onFocusCell(r,c));
+    inp.addEventListener('click',()=>onClickCell(r,c));
+    inp.addEventListener('compositionstart',()=>{ state._composing=true; });
+    inp.addEventListener('compositionend',(e)=>onCompEnd(e,r,c));
+    inp.addEventListener('input',(e)=>onInput(e,r,c));
+    inp.addEventListener('keydown',(e)=>onKey(e,r,c));
+    grid.appendChild(div);
+  }
+}
+window.addEventListener('resize',()=>{ if(state.model && !state.graded){ const vals=collectAnswers(); renderGrid(); restoreAnswers(vals); if(state.sel) select(state.sel.r,state.sel.c,false); } });
+
+/* ===== 입력 처리 (한글 IME) ===== */
+function onInput(e,r,c){
+  const el=e.target;
+  if(el.value.length>1) el.value=nfc(el.value).slice(-1);
+  if(e.isComposing||state._composing) return;
+  if(state._suppress){ state._suppress=false; return; }
+  if(e.inputType && e.inputType.indexOf('delete')===0) return;
+  if(el.value) advance();
+}
+function onCompEnd(e,r,c){
+  state._composing=false;
+  const el=e.target; if(el.value.length>1) el.value=nfc(el.value).slice(-1);
+  state._suppress=true;
+  if(el.value) advance();
+}
+function onKey(e,r,c){
+  const k=e.key;
+  if(k==='ArrowRight'){ e.preventDefault(); state.dir='across'; move(r,c,0,1); }
+  else if(k==='ArrowLeft'){ e.preventDefault(); state.dir='across'; move(r,c,0,-1); }
+  else if(k==='ArrowDown'){ e.preventDefault(); state.dir='down'; move(r,c,1,0); }
+  else if(k==='ArrowUp'){ e.preventDefault(); state.dir='down'; move(r,c,-1,0); }
+  else if(k==='Backspace'){
+    const el=state.inputs[r+'-'+c];
+    if(el.value===''){ e.preventDefault(); back(); }
+    // 값 있으면 기본 동작(지우기)
+  }
+  else if(k==='Enter'){ e.preventDefault(); }
+}
+
+/* ===== 이동/선택 ===== */
+function onFocusCell(r,c){ state._suppress=false; state._composing=false; setSel(r,c); }
+function onClickCell(r,c){
+  // 같은 칸 다시 클릭 → 방향 토글
+  const info=state.model.cell[r+'-'+c];
+  if(state.sel && state.sel.r===r && state.sel.c===c && info.across!=null && info.down!=null){
+    state.dir = state.dir==='across'?'down':'across';
+  }
+  setSel(r,c);
+}
+function setSel(r,c){
+  const info=state.model.cell[r+'-'+c]; if(!info) return;
+  if(info[state.dir]==null) state.dir = info.across!=null?'across':'down';
+  state.sel={r,c}; highlight(); updateClueBar();
+}
+function select(r,c,focus){ const inp=state.inputs[r+'-'+c]; if(!inp)return; if(focus!==false) inp.focus(); setSel(r,c); }
+function currentWord(){ const info=state.model.cell[state.sel.r+'-'+state.sel.c]; if(!info)return null; const id=info[state.dir]; if(id==null)return null; return state.model.words[id]; }
+function advance(){ const w=currentWord(); if(!w)return; const cs=cellsOf(w); const i=cs.findIndex(p=>p.r===state.sel.r&&p.c===state.sel.c); if(i>=0&&i<cs.length-1){ select(cs[i+1].r,cs[i+1].c); } }
+function back(){ const w=currentWord(); if(!w)return; const cs=cellsOf(w); const i=cs.findIndex(p=>p.r===state.sel.r&&p.c===state.sel.c); if(i>0){ const p=cs[i-1]; const el=state.inputs[p.r+'-'+p.c]; if(el)el.value=''; select(p.r,p.c); } }
+function move(r,c,dr,dc){ // 화살표: 해당 방향 가장 가까운 활성 칸으로
+  let nr=r+dr, nc=c+dc;
+  while(nr>=0&&nr<state.model.rows&&nc>=0&&nc<state.model.cols){
+    if(state.model.cell[nr+'-'+nc]){ select(nr,nc); return; }
+    nr+=dr; nc+=dc;
+  }
+}
+
+/* ===== 하이라이트 / 단서바 ===== */
+function highlight(){
+  document.querySelectorAll('.cell').forEach(d=>d.classList.remove('sel','in-word'));
+  const w=currentWord();
+  if(w){ cellsOf(w).forEach(p=>{ const d=document.querySelector(`.cell[data-k="${p.r}-${p.c}"]`); if(d)d.classList.add('in-word'); }); }
+  const sd=document.querySelector(`.cell[data-k="${state.sel.r}-${state.sel.c}"]`); if(sd)sd.classList.add('sel');
+  // 단서 목록 활성표시
+  document.querySelectorAll('.clue-item').forEach(x=>x.classList.remove('on'));
+  if(w){ const li=document.querySelector(`.clue-item[data-id="${w.id}"]`); if(li){ li.classList.add('on'); } }
+}
+function updateClueBar(){
+  const bar=$('clueBar'); const w=currentWord();
+  if(!w){ bar.className=''; bar.innerHTML='<span class="txt" style="color:var(--ink-soft);">칸이나 단서를 눌러 시작하세요</span>'; return; }
+  bar.className=state.dir;
+  bar.innerHTML=`<button class="nav" onclick="prevWord()">‹</button>
+    <span class="badge">${state.dir==='across'?'가로':'세로'} ${w.label}</span>
+    <span class="txt">${esc(w.clue)} <b style="color:var(--ink-soft);font-weight:600;">(${w.len}글자)</b></span>
+    <button class="nav" onclick="nextWord()">›</button>`;
+}
+function orderedWords(){ return state.dir==='across'?state.model.across:state.model.down; }
+function prevWord(){ gotoWord(-1); }
+function nextWord(){ gotoWord(1); }
+function gotoWord(delta){
+  const list=orderedWords(); const w=currentWord(); if(!w)return;
+  let i=list.findIndex(x=>x.id===w.id); i=(i+delta+list.length)%list.length;
+  const t=list[i]; select(t.row,t.col);
+}
+
+/* ===== 단서 목록 ===== */
+function renderClues(){
+  const M=state.model;
+  const mk=(w,cls)=>`<div class="clue-item ${cls}" data-id="${w.id}" onclick="select(${w.row},${w.col})"><b>${w.label}.</b>${esc(w.clue)} <span style="color:#b3ac9d;">(${w.len}글자)</span></div>`;
+  $('acrossList').innerHTML=M.across.map(w=>mk(w,'a')).join('');
+  $('downList').innerHTML=M.down.map(w=>mk(w,'d')).join('');
+}
+
+/* ===== 답 수집/복원 ===== */
+function collectAnswers(){ const o={}; Object.keys(state.inputs).forEach(k=>o[k]=state.inputs[k].value); return o; }
+function restoreAnswers(vals){ Object.keys(vals).forEach(k=>{ if(state.inputs[k]) state.inputs[k].value=vals[k]; }); }
+
+/* ===== 제출 & 채점 ===== */
+async function submitQuiz(){
+  const answers={}; let filled=0;
+  Object.keys(state.inputs).forEach(k=>{ const v=nfc(state.inputs[k].value).trim(); answers[k]=v; if(v)filled++; });
+  if(filled===0){ toast('아직 아무 칸도 채우지 않았어요.'); return; }
+  const empty=Object.keys(state.inputs).length-filled;
+  if(empty>0 && !confirm(`빈 칸이 ${empty}개 있어요. 그대로 제출할까요?`)) return;
+  const sec=Math.floor((Date.now()-state.startTime)/1000);
+  showLoading('채점하는 중…');
+  try{
+    const data=await api({action:'submitAnswer',quizId:state.quiz.quizId,studentName:state.studentName,studentId:state.studentId,answers,timeSpent:fmt(sec)});
+    stopTimer(); showResult(data);
+  }catch(err){ alert('제출 오류: '+err.message); }
+  finally{ hideLoading(); }
+}
+function showResult(data){
+  state.graded=true;
+  // 칸 색칠 + 정답 표시 + 잠금
+  Object.keys(state.inputs).forEach(k=>{
+    const inp=state.inputs[k]; const div=inp.closest('.cell'); inp.readOnly=true;
+    div.classList.remove('sel','in-word','correct','wrong');
+    const ok=data.result[k];
+    if(ok){ div.classList.add('correct'); }
+    else{
+      div.classList.add('wrong');
+      const correct=data.correctMap[k]||'';
+      if(!div.querySelector('.ans')){ const s=document.createElement('span'); s.className='ans'; s.textContent=correct; div.appendChild(s); }
+    }
+  });
+  const sc=data.score;
+  const color = sc>=80?'var(--good)':sc>=50?'#c98a1e':'var(--bad)';
+  const msg = sc>=80?'아주 잘했어요! 🎉':sc>=50?'좋아요! 조금만 더 💪':'다시 도전해봐요! 🙂';
+  const R=$('result');
+  R.style.background=color;
+  R.innerHTML=`<div class="big">${esc(state.studentName)} 님의 결과</div>
+    <div class="score">${sc}점</div>
+    <div class="detail">맞은 칸 ${data.correct} / ${data.total}개 · 소요시간 ${fmt(Math.floor((Date.now()-state.startTime)/1000))}</div>
+    <div class="detail" style="margin-top:6px;font-weight:700;">${msg}</div>`;
+  R.style.display='block';
+  // 제출바 → 다시 풀기 / 다시 제출
+  $('submitArea').innerHTML=`<div class="btn-row">
+      <button class="btn btn-ghost" onclick="retry()">수정해서 다시 풀기</button>
+      <button class="btn btn-accent" onclick="reSubmit()">다시 제출</button>
+    </div>`;
+  window.scrollTo({top:0,behavior:'smooth'});
+  toast('채점 완료! 결과가 선생님께 저장되었어요.');
+}
+function clearResultStyles(){
+  Object.keys(state.inputs).forEach(k=>{ const inp=state.inputs[k]; inp.readOnly=false; const div=inp.closest('.cell');
+    div.classList.remove('correct','wrong'); const a=div.querySelector('.ans'); if(a)a.remove(); });
+  $('result').style.display='none';
+  state.graded=false;
+}
+function retry(){ // 색만 지우고 답은 유지, 다시 편집 가능
+  clearResultStyles();
+  $('submitArea').innerHTML=`<button class="btn btn-accent" onclick="submitQuiz()">제출하고 채점 받기</button>`;
+  if(!state.timerId) startTimer();   // 시간 이어서 측정(새 시작)
+  $('gridWrap').scrollIntoView({behavior:'smooth',block:'center'});
+  toast('수정 후 다시 제출할 수 있어요.');
+}
+function reSubmit(){ retry(); setTimeout(submitQuiz,150); }
+</script>
+</body>
+</html>
