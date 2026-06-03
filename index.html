@@ -188,6 +188,11 @@ main{max-width:1180px;margin:0 auto;padding:28px 24px 80px;}
           <label>퀴즈 이름 (저장·출력 시 제목으로 사용됩니다)</label>
           <input type="text" id="quizName" class="wide" placeholder="예: 1학년 사회 - 시민 정치참여 퀴즈">
         </div>
+        <div class="field">
+          <label>분류(폴더) · 선택</label>
+          <input type="text" id="quizFolder" list="folderList" placeholder="예: 1학기, 3단원" style="min-width:140px;">
+          <datalist id="folderList"></datalist>
+        </div>
         <button class="btn btn-primary" onclick="saveQuiz()">💾 저장하기</button>
       </div>
       <div class="divider"></div>
@@ -226,9 +231,11 @@ main{max-width:1180px;margin:0 auto;padding:28px 24px 80px;}
         <select id="subFilter" onchange="loadSubmissions()" style="border:1.5px solid var(--line-dk);border-radius:9px;padding:9px 12px;">
           <option value="">전체 퀴즈</option>
         </select>
+        <button class="btn btn-ghost btn-sm" onclick="downloadCSV()">⬇ CSV 다운로드</button>
         <button class="btn btn-ghost btn-sm" onclick="loadSubmissions()">↻ 새로고침</button>
       </div>
       <div id="subStats"></div>
+      <div id="wordStats"></div>
       <div id="subArea"><div class="empty">불러오는 중…</div></div>
     </div>
   </section>
@@ -254,7 +261,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbyWFSkILmqttqMDeM0xr6Xi
 const KO_LABELS = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 
 /* ===== 상태 ===== */
-const state = { words:[], quizData:null, currentQuizId:null, currentQuizName:'', difficulty:'보통', ansMode:'blank' };
+const state = { words:[], quizData:null, currentQuizId:null, currentQuizName:'', difficulty:'보통', ansMode:'blank', folder:'' };
 
 /* ===== 유틸 ===== */
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -292,7 +299,7 @@ function switchView(name){
 function newQuiz(){
   if(state.words.length||state.quizData){ if(!confirm('새 퀴즈를 시작할까요?\n저장하지 않은 현재 작업은 사라집니다.')) return; }
   state.words=[]; state.quizData=null; state.currentQuizId=null; state.currentQuizName='';
-  $('topic').value=''; $('quizName').value=''; $('wordBody').innerHTML='';
+  $('topic').value=''; $('quizName').value=''; $('quizFolder').value=''; $('wordBody').innerHTML='';
   $('editCard').style.display='none'; $('previewCard').style.display='none';
   $('previewArea').innerHTML=''; $('placeWarn').innerHTML=''; $('reshuffleBtn').style.display='none';
   $('shareBtn').disabled=true; $('shareBtn').title='먼저 저장하세요';
@@ -347,8 +354,10 @@ function deleteWord(i){ state.words.splice(i,1); renderWordTable(); }
 async function fillClue(i){
   const ans=nfc(state.words[i].answer);
   if(ans.length<2){ toast('먼저 2글자 이상 단어를 입력하세요.'); return; }
+  const examples=state.words.filter((w,idx)=>idx!==i && nfc(w.answer).length>=2 && w.clue.trim())
+                            .map(w=>({answer:nfc(w.answer),clue:w.clue}));
   showLoading('AI가 힌트를 만드는 중…');
-  try{ const data=await api({action:'generateClues',words:[ans],topic:$('topic').value.trim(),difficulty:state.difficulty});
+  try{ const data=await api({action:'generateClues',words:[ans],topic:$('topic').value.trim(),difficulty:state.difficulty,examples});
     const c=data.clues[ans]; if(c){ state.words[i].clue=c; renderWordTable(); toast('힌트를 채웠어요.'); }
     else toast('힌트를 만들지 못했어요.');
   }catch(err){ alert('오류: '+err.message); } finally{ hideLoading(); }
@@ -357,8 +366,10 @@ async function fillClue(i){
 async function fillEmptyClues(){
   const targets=state.words.filter(w=>nfc(w.answer).length>=2 && !w.clue.trim());
   if(!targets.length){ toast('비어있는 힌트가 없어요.'); return; }
+  const examples=state.words.filter(w=>nfc(w.answer).length>=2 && w.clue.trim())
+                            .map(w=>({answer:nfc(w.answer),clue:w.clue}));
   showLoading(`${targets.length}개 힌트를 만드는 중…`);
-  try{ const data=await api({action:'generateClues',words:targets.map(w=>nfc(w.answer)),topic:$('topic').value.trim(),difficulty:state.difficulty});
+  try{ const data=await api({action:'generateClues',words:targets.map(w=>nfc(w.answer)),topic:$('topic').value.trim(),difficulty:state.difficulty,examples});
     let n=0; state.words.forEach(w=>{ const k=nfc(w.answer); if(!w.clue.trim()&&data.clues[k]){ w.clue=data.clues[k]; n++; } });
     renderWordTable(); toast(`${n}개 힌트를 채웠어요.`);
   }catch(err){ alert('오류: '+err.message); } finally{ hideLoading(); }
@@ -429,8 +440,17 @@ function bbox_(placed){
 }
 function centerLayout_(placed,N){
   if(!placed.length) return;
-  const b=bbox_(placed);
-  const offR=Math.floor((N-b.h)/2)-b.minR, offC=Math.floor((N-b.w)/2)-b.minC;
+  // 모든 글자 칸의 무게중심을 그리드 한가운데로 맞춤 (위/아래 시각적 균형)
+  let sumR=0,sumC=0,cnt=0,minR=1e9,maxR=-1e9,minC=1e9,maxC=-1e9;
+  placed.forEach(w=>{ for(let i=0;i<w.answer.length;i++){
+    const r=w.direction==='down'?w.row+i:w.row, c=w.direction==='across'?w.col+i:w.col;
+    sumR+=r; sumC+=c; cnt++;
+    if(r<minR)minR=r; if(r>maxR)maxR=r; if(c<minC)minC=c; if(c>maxC)maxC=c;
+  }});
+  const ctr=(N-1)/2;
+  let offR=Math.round(ctr - sumR/cnt), offC=Math.round(ctr - sumC/cnt);
+  offR=Math.max(-minR, Math.min(N-1-maxR, offR));   // 그리드 밖으로 안 나가게
+  offC=Math.max(-minC, Math.min(N-1-maxC, offC));
   placed.forEach(w=>{ w.row+=offR; w.col+=offC; });
 }
 function generateLayout(wordObjs, N, shuffle){
@@ -525,7 +545,7 @@ async function saveQuiz(){
   const name=$('quizName').value.trim();
   if(!name){ toast('퀴즈 이름을 입력하세요.'); $('quizName').focus(); return; }
   showLoading('구글 시트에 저장 중…');
-  try{ const data=await api({action:'saveQuiz',quizId:state.currentQuizId,quizName:name,topic:$('topic').value.trim(),difficulty:state.difficulty,quizData:state.quizData});
+  try{ const data=await api({action:'saveQuiz',quizId:state.currentQuizId,quizName:name,topic:$('topic').value.trim(),difficulty:state.difficulty,folder:$('quizFolder').value.trim(),quizData:state.quizData});
     state.currentQuizId=data.quizId; state.currentQuizName=name;
     $('shareBtn').disabled=false; $('shareBtn').title=''; renderPreview();
     toast(data.updated?'수정 저장 완료!':'저장 완료! 이제 공유할 수 있어요.');
@@ -593,29 +613,55 @@ function exportWord(showAns){
 
 /* ===== 저장된 퀴즈 ===== */
 let cachedQuizzes=[];
+let libFolderFilter='';
 async function loadLibrary(){
   $('libArea').innerHTML='<div class="empty">불러오는 중…</div>';
   try{ const data=await api({action:'getQuizList'}); cachedQuizzes=data.quizzes;
     if(!data.quizzes.length){ $('libArea').innerHTML='<div class="empty"><div class="big">📭</div>아직 저장된 퀴즈가 없어요.<br>「퀴즈 만들기」에서 첫 퀴즈를 만들어보세요.</div>'; return; }
-    let h='<table class="list-table"><thead><tr><th>퀴즈 이름</th><th>주제</th><th>칸</th><th>난이도</th><th>생성일</th><th>제출</th><th></th></tr></thead><tbody>';
-    data.quizzes.forEach(q=>{ h+=`<tr>
-      <td><b>${esc(q.quizName)}</b></td><td class="muted">${esc(q.topic||'-')}</td><td>${esc(q.gridSize||'-')}</td>
+    // 폴더 목록 + 입력 자동완성(datalist) 채우기
+    const folders=[...new Set(data.quizzes.map(q=>(q.folder||'').trim()).filter(Boolean))].sort();
+    const dl=$('folderList'); if(dl) dl.innerHTML=folders.map(f=>`<option value="${esc(f)}">`).join('');
+    // 폴더 필터 바
+    let bar=`<div class="actions" style="margin-bottom:14px;"><span class="muted" style="font-weight:700;">분류:</span>
+      <button class="btn btn-sm ${libFolderFilter===''?'btn-dark':'btn-ghost'}" onclick="setLibFolder('')">전체</button>`;
+    folders.forEach(f=>{ bar+=`<button class="btn btn-sm ${libFolderFilter===f?'btn-dark':'btn-ghost'}" onclick="setLibFolder('${esc(f).replace(/'/g,"\\'")}')">${esc(f)}</button>`; });
+    if(data.quizzes.some(q=>!(q.folder||'').trim())) bar+=`<button class="btn btn-sm ${libFolderFilter==='__none__'?'btn-dark':'btn-ghost'}" onclick="setLibFolder('__none__')">미분류</button>`;
+    bar+='</div>';
+    let list=data.quizzes;
+    if(libFolderFilter==='__none__') list=list.filter(q=>!(q.folder||'').trim());
+    else if(libFolderFilter) list=list.filter(q=>(q.folder||'').trim()===libFolderFilter);
+    let h=bar+'<table class="list-table"><thead><tr><th>퀴즈 이름</th><th>분류</th><th>주제</th><th>칸</th><th>난이도</th><th>생성일</th><th>제출</th><th></th></tr></thead><tbody>';
+    list.forEach(q=>{ const nm=esc(q.quizName).replace(/'/g,"\\'"); h+=`<tr>
+      <td><b>${esc(q.quizName)}</b></td>
+      <td>${q.folder?`<span class="tag">${esc(q.folder)}</span>`:'<span class="muted">-</span>'}</td>
+      <td class="muted">${esc(q.topic||'-')}</td><td>${esc(q.gridSize||'-')}</td>
       <td><span class="tag">${esc(q.difficulty||'-')}</span></td><td class="muted">${esc(String(q.createdAt).slice(0,10))}</td>
       <td><span class="pill pill-cnt">${q.submissionCount}명</span></td>
       <td class="actions" style="justify-content:flex-end;">
         <button class="btn btn-ghost btn-sm" onclick="editQuiz('${q.quizId}')">편집</button>
-        <button class="btn btn-teal btn-sm" onclick="openShare('${q.quizId}','${esc(q.quizName).replace(/'/g,"\\'")}')">공유</button>
+        <button class="btn btn-ghost btn-sm" onclick="duplicateQuiz('${q.quizId}')">복제</button>
+        <button class="btn btn-teal btn-sm" onclick="openShare('${q.quizId}','${nm}')">공유</button>
         <button class="btn btn-dark btn-sm" onclick="goSubmissions('${q.quizId}')">기록</button>
         <button class="icon-btn" onclick="deleteQuiz('${q.quizId}')" title="삭제">✕</button></td></tr>`; });
     h+='</tbody></table>'; $('libArea').innerHTML=h;
   }catch(err){ $('libArea').innerHTML=`<div class="empty">불러오기 오류: ${esc(err.message)}</div>`; }
+}
+function setLibFolder(f){ libFolderFilter=f; loadLibrary(); }
+async function duplicateQuiz(quizId){
+  showLoading('퀴즈 복제 중…');
+  try{
+    const data=await api({action:'getQuizForEdit',quizId}); const q=data.quiz;
+    await api({action:'saveQuiz',quizId:null,quizName:(q.quizName||'퀴즈')+' (사본)',topic:q.topic||'',difficulty:q.difficulty||'',folder:q.folder||'',quizData:q.quizData});
+    toast('복제했어요. 목록 맨 위에 사본이 생겼어요.');
+    loadLibrary();
+  }catch(err){ alert('복제 오류: '+err.message); } finally{ hideLoading(); }
 }
 async function editQuiz(quizId){
   showLoading('퀴즈 불러오는 중…');
   try{ const data=await api({action:'getQuizForEdit',quizId}); const q=data.quiz;
     state.words=q.quizData.words.map(w=>({answer:w.answer,clue:w.clue})); state.quizData=q.quizData;
     state.currentQuizId=q.quizId; state.currentQuizName=q.quizName; state.difficulty=q.difficulty||'보통';
-    $('topic').value=q.topic||''; $('quizName').value=q.quizName||'';
+    $('topic').value=q.topic||''; $('quizName').value=q.quizName||''; $('quizFolder').value=q.folder||'';
     const N=q.quizData.gridSize.rows;
     if([5,7,10].includes(N)){ $('gridSel').value=String(N); $('customWrap').style.display='none'; }
     else{ $('gridSel').value='custom'; $('customWrap').style.display='flex'; $('gridCustom').value=N; }
@@ -639,9 +685,10 @@ function fillSubFilter(cb){
     sel.innerHTML='<option value="">전체 퀴즈</option>'+cachedQuizzes.map(q=>`<option value="${q.quizId}">${esc(q.quizName)}</option>`).join(''); sel.value=cur; if(cb)cb(); };
   if(cachedQuizzes.length) fill(); else api({action:'getQuizList'}).then(d=>{cachedQuizzes=d.quizzes;fill();}).catch(()=>{if(cb)cb();});
 }
+let lastSubs=[];
 async function loadSubmissions(){
-  const quizId=$('subFilter').value; $('subArea').innerHTML='<div class="empty">불러오는 중…</div>'; $('subStats').innerHTML='';
-  try{ const data=await api({action:'getSubmissions',quizId:quizId||undefined}); const subs=data.submissions;
+  const quizId=$('subFilter').value; $('subArea').innerHTML='<div class="empty">불러오는 중…</div>'; $('subStats').innerHTML=''; $('wordStats').innerHTML='';
+  try{ const data=await api({action:'getSubmissions',quizId:quizId||undefined}); const subs=data.submissions; lastSubs=subs;
     if(!subs.length){ $('subArea').innerHTML='<div class="empty"><div class="big">📭</div>아직 제출 기록이 없어요.</div>'; return; }
     const avg=Math.round(subs.reduce((s,x)=>s+Number(x.score),0)/subs.length);
     $('subStats').innerHTML=`<div class="actions" style="margin-bottom:14px;"><span class="pill pill-cnt">총 ${subs.length}건 제출</span><span class="tag">평균 점수 ${avg}점</span></div>`;
@@ -651,7 +698,39 @@ async function loadSubmissions(){
         <td><span class="score-pill" style="background:${bg};color:${tc};">${sc}점</span></td><td>${s.correct} / ${s.total}</td>
         <td class="muted">${esc(s.timeSpent||'-')}</td><td class="muted">${esc(String(s.submittedAt).slice(0,16).replace('T',' '))}</td></tr>`; });
     h+='</tbody></table>'; $('subArea').innerHTML=h;
+    if(quizId) loadWordStats(quizId);   // 특정 퀴즈 선택 시 단어별 정답률
   }catch(err){ $('subArea').innerHTML=`<div class="empty">불러오기 오류: ${esc(err.message)}</div>`; }
+}
+
+async function loadWordStats(quizId){
+  $('wordStats').innerHTML='<div class="muted" style="margin-bottom:10px;">단어별 정답률 계산 중…</div>';
+  try{
+    const data=await api({action:'getWordStats',quizId});
+    const words=(data.words||[]).filter(w=>w.total>0).sort((a,b)=>a.rate-b.rate); // 많이 틀린 순
+    if(!words.length){ $('wordStats').innerHTML=''; return; }
+    let h='<div class="card" style="box-shadow:none;border:1px dashed var(--line-dk);margin-bottom:18px;"><h3 style="font-family:\'Nanum Myeongjo\',serif;font-size:17px;margin:0 0 4px;">📈 단어별 정답률</h3><p class="muted" style="margin:0 0 12px;">많이 틀린 단어가 위에 옵니다 (학생들이 약한 개념 파악용)</p>';
+    words.forEach(w=>{
+      const r=w.rate, col=r>=80?'#2f8f57':r>=50?'#b5781c':'#c0392b', bg=r>=80?'#e3f3e8':r>=50?'#fdf3e3':'#fbe6e2';
+      h+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <div style="width:74px;flex:none;font-weight:700;color:${w.direction==='across'?'var(--accent)':'var(--teal)'};">${esc(w.answer)}</div>
+        <div style="flex:1;background:#efe9dc;border-radius:8px;height:18px;overflow:hidden;"><div style="width:${r}%;height:100%;background:${col};"></div></div>
+        <div style="width:88px;flex:none;text-align:right;font-size:13px;"><b style="color:${col};">${r}%</b> <span class="muted">(${w.correct}/${w.total})</span></div>
+      </div>`;
+    });
+    h+='</div>'; $('wordStats').innerHTML=h;
+  }catch(err){ $('wordStats').innerHTML=''; }
+}
+
+function downloadCSV(){
+  if(!lastSubs.length){ toast('내보낼 제출 기록이 없어요.'); return; }
+  const cols=['이름','학번','퀴즈','점수','정답칸','전체칸','오답칸','소요시간','제출시각'];
+  const esc2=v=>{ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  const rows=lastSubs.map(s=>[s.studentName,s.studentId,s.quizName,s.score,s.correct,s.total,s.wrong,s.timeSpent,String(s.submittedAt).replace('T',' ')].map(esc2).join(','));
+  const csv='\ufeff'+cols.join(',')+'\n'+rows.join('\n');   // BOM → 엑셀 한글 깨짐 방지
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const fname=($('subFilter').selectedOptions[0]?.text||'전체')+'_제출기록.csv';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fname; a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV를 저장했어요.');
 }
 </script>
 </body>
