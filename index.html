@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
 <title>혜란샘의 가로세로 퀴즈 만들기 · 선생님</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -137,9 +138,43 @@ main{max-width:1180px;margin:0 auto;padding:28px 24px 80px;}
 .mkv .k{flex:none;width:96px;font-weight:700;color:var(--ink);}
 .mkv .v{color:var(--ink-soft);}
 @media(max-width:560px){.man-hero h1{font-size:24px;}.mkv{flex-direction:column;gap:2px;}.mkv .k{width:auto;}}
+/* ===== 선생님 잠금 화면 ===== */
+body.locked > *:not(#gate){display:none!important;}
+#gate{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:center;padding:20px;
+  background:var(--paper);background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:22px 22px;}
+body.locked #gate{display:flex;}
+#gate .box{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:34px 28px;max-width:390px;width:100%;text-align:center;}
+#gate .emo{font-size:40px;line-height:1;margin-bottom:10px;}
+#gate h1{font-family:'Nanum Myeongjo',serif;font-size:22px;margin:0 0 8px;}
+#gate p{color:var(--ink-soft);font-size:14px;margin:0 0 20px;line-height:1.65;}
+#gate input{width:100%;border:1.5px solid var(--line-dk);border-radius:11px;padding:13px 14px;font-size:16px;background:#fff;font-family:inherit;}
+#gate input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(42,111,107,.13);}
+#gate button.go{width:100%;margin-top:12px;border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:800;background:var(--teal);color:#fff;font-family:inherit;cursor:pointer;}
+#gate .msg{min-height:20px;margin-top:10px;font-size:13.5px;font-weight:700;color:var(--bad);}
+#gate .links{margin-top:14px;display:flex;justify-content:center;gap:16px;font-size:13px;}
+#gate .links a{color:var(--ink-soft);cursor:pointer;text-decoration:underline;}
+#gate .hash{margin-top:14px;font-size:12px;line-height:1.6;word-break:break-all;background:var(--paper);border:1px dashed var(--line-dk);border-radius:10px;padding:11px;display:none;text-align:left;}
+.lockbtn{background:transparent;color:#f4f1ea;border:1px solid rgba(255,255,255,.35);border-radius:9px;padding:7px 11px;font-size:14px;cursor:pointer;flex:none;}
 </style>
 </head>
-<body>
+<body class="locked">
+
+<!-- 선생님 잠금 화면: 학생이 주소 뒤를 지우고 들어와도 여기서 막힌다 -->
+<div id="gate">
+  <div class="box">
+    <div class="emo">🔒</div>
+    <h1>선생님 전용 페이지</h1>
+    <p>퀴즈를 만들고 제출 현황을 보는 곳이에요.<br>학생은 선생님이 준 <b>학생용 링크</b>로 들어가세요.</p>
+    <input type="password" id="gatePw" placeholder="선생님 비밀번호" autocomplete="current-password">
+    <button class="go" onclick="gateSubmit()">들어가기</button>
+    <div class="msg" id="gateMsg"></div>
+    <div class="links">
+      <a href="student.html">학생용 페이지 →</a>
+      <a onclick="changePw()">비밀번호 바꾸기</a>
+    </div>
+    <div class="hash" id="gateHash"></div>
+  </div>
+</div>
 <header>
   <div class="logo">혜란샘의 가로세로 퀴즈 만들기<span class="badge">선생님</span></div>
   <nav>
@@ -149,6 +184,7 @@ main{max-width:1180px;margin:0 auto;padding:28px 24px 80px;}
     <button data-view="manual">📖 사용 매뉴얼</button>
   </nav>
   <button class="newbtn" onclick="newQuiz()">＋ 새 퀴즈</button>
+  <button class="lockbtn" onclick="lockNow()" title="잠그기">🔒</button>
 </header>
 
 <main>
@@ -352,6 +388,93 @@ main{max-width:1180px;margin:0 auto;padding:28px 24px 80px;}
 <script>
 /* ===== 설정 ===== */
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbyWFSkILmqttqMDeM0xr6XisuoRfzLgCc0Z2h5ujN4ZpPY5N1ES0HVCvVxX-qp3oSSN/exec';
+
+/* ===== 선생님 잠금 =====
+   기본 비밀번호: crossword2026   ← 처음 한 번은 꼭 바꾸세요.
+   바꾸는 법: 잠금 화면의 "비밀번호 바꾸기" → 새 비밀번호 입력 → 나오는 긴 문자열을
+             아래 TEACHER_PW_HASH 따옴표 안에 붙여넣고 GitHub 에 올리면 끝.
+   ※ 이 화면 잠금은 눈에 보이는 1차 방어일 뿐이다. 개발자도구를 아는 사람은 넘어갈 수 있다.
+      진짜 방어는 Apps Script 쪽에서 비밀번호를 확인하는 것 — APPS_SCRIPT_보안패치.md 를 꼭 적용할 것. */
+const TEACHER_PW_HASH = '259ef15914b526b516cf157c945b7d1f36bf7df8f0548f06170432a46de65f7b';
+const PW_KEY = 'cwq_teacher', PW_TTL = 12*60*60*1000;   /* 한 번 풀면 12시간 기억 */
+let TEACHER_PW = '';
+
+/* ===== SHA-256 (외부 라이브러리 없이, file:// 에서도 동작) ===== */
+function sha256(msg){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+           0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+           0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+           0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+           0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+           0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+           0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+           0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const utf8=unescape(encodeURIComponent(msg));
+  const len=utf8.length; const bytes=new Uint8Array((((len+8)>>6)+1)*64);
+  for(let i=0;i<len;i++) bytes[i]=utf8.charCodeAt(i)&0xff;
+  bytes[len]=0x80;
+  const bitLen=len*8;
+  bytes[bytes.length-4]=(bitLen>>>24)&0xff; bytes[bytes.length-3]=(bitLen>>>16)&0xff;
+  bytes[bytes.length-2]=(bitLen>>>8)&0xff;  bytes[bytes.length-1]=bitLen&0xff;
+  const w=new Uint32Array(64);
+  const rr=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let off=0;off<bytes.length;off+=64){
+    for(let i=0;i<16;i++) w[i]=(bytes[off+i*4]<<24)|(bytes[off+i*4+1]<<16)|(bytes[off+i*4+2]<<8)|bytes[off+i*4+3];
+    for(let i=16;i<64;i++){
+      const s0=rr(w[i-15],7)^rr(w[i-15],18)^(w[i-15]>>>3);
+      const s1=rr(w[i-2],17)^rr(w[i-2],19)^(w[i-2]>>>10);
+      w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0;
+    }
+    let [a,b,c,d,e,f,g,h]=H;
+    for(let i=0;i<64;i++){
+      const S1=rr(e,6)^rr(e,11)^rr(e,25), ch=(e&f)^((~e)&g);
+      const t1=(h+S1+ch+K[i]+w[i])>>>0;
+      const S0=rr(a,2)^rr(a,13)^rr(a,22), maj=(a&b)^(a&c)^(b&c);
+      const t2=(S0+maj)>>>0;
+      h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
+    }
+    H=[(H[0]+a)>>>0,(H[1]+b)>>>0,(H[2]+c)>>>0,(H[3]+d)>>>0,(H[4]+e)>>>0,(H[5]+f)>>>0,(H[6]+g)>>>0,(H[7]+h)>>>0];
+  }
+  return H.map(x=>('00000000'+x.toString(16)).slice(-8)).join('');
+}
+
+function pwHash(pw){ return sha256(String(pw)+':cwq'); }
+function unlock(pw){
+  if(pwHash(pw)!==TEACHER_PW_HASH) return false;
+  TEACHER_PW=String(pw);
+  try{ localStorage.setItem(PW_KEY,JSON.stringify({pw:TEACHER_PW,exp:Date.now()+PW_TTL})); }catch(e){}
+  document.body.classList.remove('locked');
+  return true;
+}
+function gateSubmit(){
+  const el=$('gatePw');
+  if(unlock(el.value)){ el.value=''; $('gateMsg').textContent=''; }
+  else{ $('gateMsg').textContent='비밀번호가 맞지 않아요.'; el.select(); }
+}
+function lockNow(){
+  TEACHER_PW=''; try{ localStorage.removeItem(PW_KEY); }catch(e){}
+  document.body.classList.add('locked');
+  $('gateHash').style.display='none';
+  setTimeout(()=>{ const el=$('gatePw'); if(el) el.focus(); },60);
+}
+function changePw(){
+  const p=prompt('새 비밀번호를 입력하세요.');
+  if(!p) return;
+  const box=$('gateHash'); box.style.display='block';
+  box.innerHTML='<b>index.html 의 TEACHER_PW_HASH 를 아래 값으로 바꾸세요</b><br><code>'+esc(pwHash(p))+
+    '</code><br><span style="color:var(--ink-soft);">Apps Script 의 TEACHER_PW 에는 새 비밀번호를 그대로 적습니다.</span>';
+}
+(function initGate(){
+  const el=$('gatePw');
+  if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') gateSubmit(); });
+  try{
+    const raw=localStorage.getItem(PW_KEY);
+    if(raw){ const o=JSON.parse(raw);
+      if(o && o.exp>Date.now() && pwHash(o.pw)===TEACHER_PW_HASH){ TEACHER_PW=o.pw; document.body.classList.remove('locked'); return; } }
+  }catch(e){}
+  if(el) setTimeout(()=>el.focus(),80);
+})();
 const KO_LABELS = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 
 /* ===== 상태 ===== */
@@ -368,10 +491,43 @@ function closeModal(id){ $(id).classList.remove('show'); }
 function nfc(s){ return String(s||'').normalize('NFC'); }
 
 async function api(payload){
-  const res = await fetch(GAS_URL,{method:'POST',body:JSON.stringify(payload)});
+  /* 선생님 비밀번호를 함께 보낸다 — Apps Script 가 이걸 확인해야 진짜 잠금이 된다 */
+  const body = TEACHER_PW ? Object.assign({}, payload, {pw:TEACHER_PW}) : payload;
+  const res = await fetch(GAS_URL,{method:'POST',body:JSON.stringify(body)});
   const text = await res.text(); let data;
   try{ data=JSON.parse(text); }catch(e){ throw new Error('서버 응답 오류. GAS 배포 권한이 "모든 사용자"인지 확인하세요.'); }
-  if(!data.ok) throw new Error(data.error||'알 수 없는 오류'); return data;
+  if(!data.ok){ if(/비밀번호/.test(data.error||'')) lockNow(); throw new Error(data.error||'알 수 없는 오류'); }
+  return data;
+}
+
+/* ===== 시간 표시 =====
+   구글 시트는 "03:25"(3분 25초) 같은 문자열을 '시각'으로 자동 변환해 버린다.
+   그래서 옛 기록의 소요시간은 1899-12-30 기준 날짜로 저장돼 있고, 원래 분이 '시' 자리,
+   원래 초가 '분' 자리에 들어가 있다. 그 경우 되돌려서 보여준다.
+   앞으로는 student.html 이 "3분 25초" 형태로 보내므로 이런 일이 생기지 않는다. */
+function kstParts(d){
+  const o={};
+  new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hourCycle:'h23',
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})
+    .formatToParts(d).forEach(x=>{ o[x.type]=x.value; });
+  return o;
+}
+function fmtTimeSpent(v){
+  const s=String(v==null?'':v).trim(); if(!s) return '-';
+  const d=new Date(s);
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s) && !isNaN(d.getTime()) && d.getUTCFullYear()<1910){
+    const p=kstParts(d), mm=(Number(p.hour)||0)%24, ss=Number(p.minute)||0;
+    return mm ? mm+'분 '+String(ss).padStart(2,'0')+'초' : ss+'초';
+  }
+  const m=s.match(/^(\d+):([0-5]\d)$/);           /* 문자열로 남은 "MM:SS" */
+  if(m) return Number(m[1]) ? Number(m[1])+'분 '+m[2]+'초' : Number(m[2])+'초';
+  return s;
+}
+function fmtWhen(v){
+  const s=String(v==null?'':v).trim(); if(!s) return '-';
+  const d=new Date(s); if(isNaN(d.getTime())) return s;
+  const p=kstParts(d);
+  return p.year+'-'+p.month+'-'+p.day+' '+String(Number(p.hour)%24).padStart(2,'0')+':'+p.minute;
 }
 function getGridSize(){ const v=$('gridSel').value; return v==='custom'?Math.max(5,Math.min(20,parseInt($('gridCustom').value)||10)):parseInt(v); }
 function onGridSel(){ $('customWrap').style.display=$('gridSel').value==='custom'?'flex':'none'; }
@@ -790,7 +946,7 @@ async function loadSubmissions(){
     subs.forEach(s=>{ const sc=Number(s.score); const bg=sc>=80?'#e6f3ea':sc>=50?'#fdf3e3':'#fbe6e3'; const tc=sc>=80?'#2f8f57':sc>=50?'#b5781c':'#c0392b';
       h+=`<tr><td><b>${esc(s.studentName)}</b></td><td>${esc(s.studentId)}</td><td class="muted">${esc(s.quizName)}</td>
         <td><span class="score-pill" style="background:${bg};color:${tc};">${sc}점</span></td><td>${s.correct} / ${s.total}</td>
-        <td class="muted">${esc(s.timeSpent||'-')}</td><td class="muted">${esc(String(s.submittedAt).slice(0,16).replace('T',' '))}</td></tr>`; });
+        <td class="muted">${esc(fmtTimeSpent(s.timeSpent))}</td><td class="muted">${esc(fmtWhen(s.submittedAt))}</td></tr>`; });
     h+='</tbody></table>'; $('subArea').innerHTML=h;
     if(quizId) loadWordStats(quizId);   // 특정 퀴즈 선택 시 단어별 정답률
   }catch(err){ $('subArea').innerHTML=`<div class="empty">불러오기 오류: ${esc(err.message)}</div>`; }
@@ -819,7 +975,7 @@ function downloadCSV(){
   if(!lastSubs.length){ toast('내보낼 제출 기록이 없어요.'); return; }
   const cols=['이름','학번','퀴즈','점수','정답칸','전체칸','오답칸','소요시간','제출시각'];
   const esc2=v=>{ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
-  const rows=lastSubs.map(s=>[s.studentName,s.studentId,s.quizName,s.score,s.correct,s.total,s.wrong,s.timeSpent,String(s.submittedAt).replace('T',' ')].map(esc2).join(','));
+  const rows=lastSubs.map(s=>[s.studentName,s.studentId,s.quizName,s.score,s.correct,s.total,s.wrong,fmtTimeSpent(s.timeSpent),fmtWhen(s.submittedAt)].map(esc2).join(','));
   const csv='\ufeff'+cols.join(',')+'\n'+rows.join('\n');   // BOM → 엑셀 한글 깨짐 방지
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const fname=($('subFilter').selectedOptions[0]?.text||'전체')+'_제출기록.csv';
