@@ -200,6 +200,9 @@ function startPlay(){
 function startTimer(){ state.startTime=Date.now(); state.timerId=setInterval(()=>{ $('timer').textContent=fmt(Math.floor((Date.now()-state.startTime)/1000)); },1000); }
 function stopTimer(){ if(state.timerId){ clearInterval(state.timerId); state.timerId=null; } }
 function fmt(sec){ const m=Math.floor(sec/60), s=sec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
+/* 시트로 보낼 때는 "03:25" 대신 "3분 25초" — 구글 시트가 "03:25"를 시각(3시 25분)으로
+   바꿔 저장해 버려서 선생님 화면에 1899년 날짜가 뜨던 문제 때문이다. 형식을 되돌리지 말 것. */
+function fmtHuman(sec){ const m=Math.floor(sec/60), s=sec%60; return m ? m+'분 '+String(s).padStart(2,'0')+'초' : s+'초'; }
 
 /* ===== 숨은 입력창 (모든 한글 조합이 여기서 일어남) ===== */
 function createHiddenInput(){
@@ -358,7 +361,7 @@ async function submitQuiz(){
   const sec=Math.floor((Date.now()-state.startTime)/1000);
   showLoading('채점하는 중…');
   try{
-    const data=await api({action:'submitAnswer',quizId:state.quiz.quizId,studentName:state.studentName,studentId:state.studentId,answers,timeSpent:fmt(sec)});
+    const data=await api({action:'submitAnswer',quizId:state.quiz.quizId,studentName:state.studentName,studentId:state.studentId,answers,timeSpent:fmtHuman(sec)});
     stopTimer(); showResult(data);
   }catch(err){ alert('제출 오류: '+err.message); }
   finally{ hideLoading(); }
@@ -379,7 +382,7 @@ function showResult(data){
   const R=$('result'); R.style.background=color;
   R.innerHTML=`<div class="big">${esc(state.studentName)} 님의 결과</div>
     <div class="score">${sc}점</div>
-    <div class="detail">맞은 칸 ${data.correct} / ${data.total}개 · 소요시간 ${fmt(Math.floor((Date.now()-state.startTime)/1000))}</div>
+    <div class="detail">맞은 칸 ${data.correct} / ${data.total}개 · 소요시간 ${fmtHuman(Math.floor((Date.now()-state.startTime)/1000))}</div>
     <div class="detail" style="margin-top:6px;font-weight:700;">${msg}</div>`;
   R.style.display='block';
   $('submitArea').innerHTML=`<div class="btn-row">
