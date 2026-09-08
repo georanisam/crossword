@@ -45,9 +45,9 @@ h1.qtitle{font-family:'Nanum Myeongjo',serif;font-size:24px;margin:0 0 6px;line-
 #clueBar.down .cb{background:var(--teal);}
 #clueBar .txt{flex:1;}
 #clueBar .nav{background:#f1ece0;border:none;width:34px;height:34px;border-radius:9px;font-size:16px;color:var(--ink);flex:none;}
-#gridWrap{display:flex;justify-content:center;overflow-x:auto;padding:4px;margin-bottom:18px;}
+#gridWrap{position:relative;display:flex;justify-content:center;overflow-x:auto;padding:4px;margin-bottom:18px;}
 #grid{display:grid;gap:0;border:4px solid #1f1c17;background:#1f1c17;position:relative;}
-.cell{position:relative;background:#fff;border:1px solid #c9c4b8;}
+.cell{position:relative;background:#fff;border:1px solid #c9c4b8;-webkit-user-select:none;user-select:none;}
 .cell.blank{background:#f1f1f1;background-image:repeating-linear-gradient(45deg,#f1f1f1,#f1f1f1 3px,#e4e4e4 3px,#e4e4e4 6px);border:1px solid #ddd;}
 .cell .lbl{position:absolute;top:1px;left:2px;font-size:9px;line-height:1;font-weight:700;pointer-events:none;z-index:3;white-space:nowrap;}
 .cell .lbl .a{color:var(--accent);}
@@ -60,7 +60,7 @@ h1.qtitle{font-family:'Nanum Myeongjo',serif;font-size:24px;margin:0 0 6px;line-
 .cell.wrong{background:var(--bad-bg)!important;}
 .cell.wrong .txt{color:var(--bad);}
 .cell .ans{position:absolute;bottom:0px;right:2px;font-size:10px;font-weight:800;color:var(--good);line-height:1;pointer-events:none;z-index:3;}
-#hin{position:absolute;inset:0;width:100%;height:100%;border:none;background:transparent;color:transparent;caret-color:transparent;text-align:center;font-family:inherit;outline:none;padding:0;z-index:2;}
+#hin{position:absolute;left:0;top:0;width:1px;height:1px;border:none;background:transparent;color:transparent;caret-color:transparent;text-align:center;font-family:inherit;font-size:16px;outline:none;padding:0;margin:0;z-index:2;}
 .clues{display:flex;gap:24px;flex-wrap:wrap;}
 .cluecol{flex:1;min-width:240px;}
 .cluecol h3{font-size:15px;margin:0 0 8px;padding-bottom:5px;border-bottom:2px solid;}
@@ -210,7 +210,22 @@ function createHiddenInput(){
   hin.addEventListener('input', onInput);
   hin.addEventListener('compositionend', onInput);
   hin.addEventListener('keydown', onKey);
+  /* 선택된 칸은 입력창이 덮고 있으므로, 그 위 탭은 여기서 받아 가로/세로를 전환한다 */
+  hin.addEventListener('click', ()=>{ if(state.sel) onClickCell(state.sel.r,state.sel.c); });
+  $('gridWrap').appendChild(hin);
   state.hin=hin;
+}
+
+/* 입력창을 선택된 칸 위로 겹친다 — DOM에서 옮기지 않고 좌표만 바꾼다 */
+function positionHin(){
+  const hin=state.hin; if(!hin) return;
+  const el=state.sel&&state.cellEls[state.sel.r+'-'+state.sel.c];
+  if(!el){ hin.style.width='1px'; hin.style.height='1px'; return; }
+  const g=$('grid'), d=el.div;
+  hin.style.left=(g.offsetLeft+g.clientLeft+d.offsetLeft)+'px';
+  hin.style.top =(g.offsetTop +g.clientTop +d.offsetTop )+'px';
+  hin.style.width =d.offsetWidth +'px';
+  hin.style.height=d.offsetHeight+'px';
 }
 
 /* ===== 그리드 ===== */
@@ -236,13 +251,18 @@ function renderGrid(){
     let lbl=''; if(info.aLabel||info.dLabel){ const a=info.aLabel?'<span class="a">'+info.aLabel+'</span>':''; const d=info.dLabel?'<span class="d">'+info.dLabel+'</span>':''; lbl='<span class="lbl">'+a+(info.aLabel&&info.dLabel?' ':'')+d+'</span>'; }
     const txt='<span class="txt" style="font-size:'+fontPx+'px;">'+(state.letters[k]?esc(state.letters[k]):'')+'</span>';
     div.innerHTML=lbl+txt;
-    div.addEventListener('mousedown',(e)=>{ e.preventDefault(); onClickCell(r,c); });
-    div.addEventListener('touchstart',(e)=>{ onClickCell(r,c); },{passive:true});
+    div.addEventListener('click',()=>{ onClickCell(r,c); });
     state.cellEls[k]={div, txt:div.querySelector('.txt')};
     grid.appendChild(div);
   }
 }
-window.addEventListener('resize',()=>{ if(state.model){ renderGrid(); if(state.sel) selectCell(state.sel.r,state.sel.c,true); } });
+let lastGridW=window.innerWidth;
+window.addEventListener('resize',()=>{
+  if(!state.model) return;
+  if(window.innerWidth===lastGridW){ positionHin(); return; }   /* 키보드만 올라온 경우 */
+  lastGridW=window.innerWidth;
+  renderGrid(); if(state.sel) selectCell(state.sel.r,state.sel.c,true);
+});
 
 /* ===== 선택 / 포커스 ===== */
 function onClickCell(r,c){
@@ -252,7 +272,7 @@ function onClickCell(r,c){
   selectCell(r,c);
 }
 function selectWord(id){ const w=state.model.words[id]; state.dir=w.direction; selectCell(w.row,w.col); }
-function selectCell(r,c,keepRun){
+function selectCell(r,c,noFocus){
   const info=state.model.cell[r+'-'+c]; if(!info) return;
   if(info[state.dir]==null) state.dir = info.across!=null?'across':'down';
   state.sel={r,c};
@@ -260,7 +280,7 @@ function selectCell(r,c,keepRun){
   const start=cells.findIndex(p=>p.r===r&&p.c===c);
   state.run={wordId:w.id, start:start<0?0:start, len:0};
   const el=state.cellEls[r+'-'+c];
-  if(el && !state.graded){ el.div.appendChild(state.hin); state.hin.value=''; try{ state.hin.focus({preventScroll:true}); }catch(e){ state.hin.focus(); } }
+  if(el && !state.graded){ state.hin.value=''; positionHin(); if(!noFocus){ try{ state.hin.focus({preventScroll:true}); }catch(e){ state.hin.focus(); } } }
   highlight(); updateClueBar();
 }
 
@@ -345,7 +365,7 @@ async function submitQuiz(){
 }
 function showResult(data){
   state.graded=true;
-  if(state.hin && state.hin.parentNode){ state.hin.blur(); state.hin.parentNode.removeChild(state.hin); }
+  if(state.hin){ state.hin.blur(); state.hin.style.width='1px'; state.hin.style.height='1px'; }   /* DOM에서 빼면 '다시 풀기' 때 입력이 죽는다 */
   document.querySelectorAll('.cell').forEach(d=>d.classList.remove('sel','in-word'));
   Object.keys(state.model.cell).forEach(k=>{
     const el=state.cellEls[k]; if(!el)return; const div=el.div;
