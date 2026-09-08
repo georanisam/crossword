@@ -390,12 +390,12 @@ body.locked #gate{display:flex;}
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbyWFSkILmqttqMDeM0xr6XisuoRfzLgCc0Z2h5ujN4ZpPY5N1ES0HVCvVxX-qp3oSSN/exec';
 
 /* ===== 선생님 잠금 =====
-   기본 비밀번호: crossword2026   ← 처음 한 번은 꼭 바꾸세요.
+   비밀번호: 1111
    바꾸는 법: 잠금 화면의 "비밀번호 바꾸기" → 새 비밀번호 입력 → 나오는 긴 문자열을
              아래 TEACHER_PW_HASH 따옴표 안에 붙여넣고 GitHub 에 올리면 끝.
    ※ 이 화면 잠금은 눈에 보이는 1차 방어일 뿐이다. 개발자도구를 아는 사람은 넘어갈 수 있다.
       진짜 방어는 Apps Script 쪽에서 비밀번호를 확인하는 것 — APPS_SCRIPT_보안패치.md 를 꼭 적용할 것. */
-const TEACHER_PW_HASH = '259ef15914b526b516cf157c945b7d1f36bf7df8f0548f06170432a46de65f7b';
+const TEACHER_PW_HASH = 'c786ab3218706e24bed374db030ab9e328617f20bd2b39929a4e742e17d6122d';
 const PW_KEY = 'cwq_teacher', PW_TTL = 12*60*60*1000;   /* 한 번 풀면 12시간 기억 */
 let TEACHER_PW = '';
 
