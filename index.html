@@ -557,6 +557,20 @@ function fmtTimeSpent(v){
   if(m) return Number(m[1]) ? Number(m[1])+'분 '+m[2]+'초' : Number(m[2])+'초';
   return s;
 }
+/* 정렬하려면 소요시간을 숫자로 되돌려야 한다. fmtTimeSpent 와 같은 세 가지 형태를 받는다:
+   시트가 날짜로 바꿔버린 옛 기록 / "3분 25초" / 문자열로 남은 "MM:SS". */
+function timeSpentSec(v){
+  const s=String(v==null?'':v).trim(); if(!s) return null;
+  const d=new Date(s);
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s) && !isNaN(d.getTime()) && d.getUTCFullYear()<1910){
+    const p=kstParts(d); return ((Number(p.hour)||0)%24)*60 + (Number(p.minute)||0);
+  }
+  let m=s.match(/^(?:(\d+)\s*분)?\s*(\d+)\s*초$/);
+  if(m) return (Number(m[1])||0)*60 + Number(m[2]);
+  m=s.match(/^(\d+):([0-5]\d)$/);
+  if(m) return Number(m[1])*60 + Number(m[2]);
+  return null;
+}
 function fmtWhen(v){
   const s=String(v==null?'':v).trim(); if(!s) return '-';
   const d=new Date(s); if(isNaN(d.getTime())) return s;
@@ -972,21 +986,93 @@ function fillSubFilter(cb){
   if(cachedQuizzes.length) fill(); else api({action:'getQuizList'}).then(d=>{cachedQuizzes=d.quizzes;fill();}).catch(()=>{if(cb)cb();});
 }
 let lastSubs=[];
+let subSort={key:'when', dir:'desc'};   // 기본: 최근 제출이 위
+
+/* 같은 학생이 같은 퀴즈를 여러 번 냈으면 몇 번째 제출인지 매긴다.
+   학번으로 묶는다(이름은 오타가 날 수 있다). 제출시각이 이른 것이 1번째. */
+function markAttempts(subs){
+  const groups={};
+  subs.forEach(s=>{
+    const who=String(s.studentId||'').trim() || ('name:'+String(s.studentName||'').trim());
+    const key=s.quizId+'|'+who;
+    (groups[key]=groups[key]||[]).push(s);
+  });
+  Object.keys(groups).forEach(k=>{
+    groups[k].sort((a,b)=>new Date(a.submittedAt)-new Date(b.submittedAt))
+             .forEach((s,i)=>{ s._seq=i+1; s._total=groups[k].length; });
+  });
+  return subs;
+}
+
+function sortSubs(subs){
+  const dir = subSort.dir==='asc' ? 1 : -1;
+  const val = {
+    name: s=>String(s.studentName||''),
+    sid:  s=>String(s.studentId||''),
+    when: s=>new Date(s.submittedAt).getTime(),
+    spent:s=>timeSpentSec(s.timeSpent)
+  }[subSort.key];
+
+  return subs.slice().sort((a,b)=>{
+    const x=val(a), y=val(b);
+    // 값이 없는 행(소요시간이 비었거나 형식이 이상한 것)은 방향과 무관하게 항상 맨 아래로
+    const xn=(x===null||x===undefined||x===''||(typeof x==='number'&&isNaN(x)));
+    const yn=(y===null||y===undefined||y===''||(typeof y==='number'&&isNaN(y)));
+    if(xn||yn) return xn&&yn ? 0 : (xn?1:-1);
+
+    let c;
+    if(subSort.key==='name') c=x.localeCompare(y,'ko');
+    else if(subSort.key==='sid'){
+      const nx=Number(x), ny=Number(y);
+      c = (!isNaN(nx)&&!isNaN(ny)) ? nx-ny : x.localeCompare(y,'ko');   // 학번은 숫자로
+    }
+    else c = x-y;
+    if(c) return c*dir;
+    return new Date(a.submittedAt)-new Date(b.submittedAt);   // 동점이면 제출 순서
+  });
+}
+
+function setSubSort(key){ subSort.key=key; renderSubTable(); }
+function toggleSubDir(){ subSort.dir = subSort.dir==='asc' ? 'desc' : 'asc'; renderSubTable(); }
+
+function renderSubTable(){
+  const rows=sortSubs(lastSubs);
+  let h='<table class="list-table"><thead><tr><th>이름</th><th>학번</th><th>퀴즈</th><th>점수</th><th>정답/전체</th><th>소요시간</th><th>제출시각</th></tr></thead><tbody>';
+  rows.forEach(s=>{
+    const sc=Number(s.score); const bg=sc>=80?'#e6f3ea':sc>=50?'#fdf3e3':'#fbe6e3'; const tc=sc>=80?'#2f8f57':sc>=50?'#b5781c':'#c0392b';
+    // 두 번째 제출부터 ✌🏻 — 몇 번째인지도 같이 보여준다
+    const again = s._seq>1
+      ? ` <span title="${s._seq}번째 제출" style="white-space:nowrap;">✌🏻<span style="font-size:11px;color:var(--ink-soft);">${s._seq}</span></span>` : '';
+    h+=`<tr><td><b>${esc(s.studentName)}</b>${again}</td><td>${esc(s.studentId)}</td><td class="muted">${esc(s.quizName)}</td>
+      <td><span class="score-pill" style="background:${bg};color:${tc};">${sc}점</span></td><td>${s.correct} / ${s.total}</td>
+      <td class="muted">${esc(fmtTimeSpent(s.timeSpent))}</td><td class="muted">${esc(fmtWhen(s.submittedAt))}</td></tr>`;
+  });
+  h+='</tbody></table>'; $('subArea').innerHTML=h;
+}
+
+function sortBarHTML(){
+  const opts=[['when','제출시각순'],['name','이름순'],['sid','학번순'],['spent','소요시간순']];
+  const btns=opts.map(([k,label])=>
+    `<button class="btn btn-sm ${subSort.key===k?'btn-dark':'btn-ghost'}" onclick="setSubSort('${k}')">${label}</button>`).join('');
+  return `<div class="actions" style="margin-bottom:14px;"><span class="muted" style="font-weight:700;">정렬:</span>${btns}
+    <button class="btn btn-ghost btn-sm" onclick="toggleSubDir()" title="오름차순/내림차순 바꾸기">${subSort.dir==='asc'?'↑ 오름차순':'↓ 내림차순'}</button></div>`;
+}
+
 async function loadSubmissions(){
-  const quizId=$('subFilter').value; $('subArea').innerHTML='<div class="empty">불러오는 중…</div>'; $('subStats').innerHTML=''; $('wordStats').innerHTML='';
-  try{ const data=await api({action:'getSubmissions',quizId:quizId||undefined}); const subs=data.submissions; lastSubs=subs;
+  const quizId=$('subFilter').value;
+  if(!quizId) subSort={key:'when', dir:'desc'};   // 전체 보기는 정렬 UI가 없으므로 기본값으로 $('subArea').innerHTML='<div class="empty">불러오는 중…</div>'; $('subStats').innerHTML=''; $('wordStats').innerHTML='';
+  try{ const data=await api({action:'getSubmissions',quizId:quizId||undefined}); const subs=markAttempts(data.submissions); lastSubs=subs;
     if(!subs.length){ $('subArea').innerHTML='<div class="empty"><div class="big">📭</div>아직 제출 기록이 없어요.</div>'; return; }
     const avg=Math.round(subs.reduce((s,x)=>s+Number(x.score),0)/subs.length);
     // 기록이 아주 많으면 서버가 최신 것만 보낸다 (그래야 응답이 안 터진다)
     const cut = data.totalCount && data.totalCount>subs.length
       ? `<span class="tag">전체 ${data.totalCount}건 중 최신 ${subs.length}건 표시</span>` : '';
-    $('subStats').innerHTML=`<div class="actions" style="margin-bottom:14px;"><span class="pill pill-cnt">총 ${data.totalCount||subs.length}건 제출</span><span class="tag">평균 점수 ${avg}점</span>${cut}</div>`;
-    let h='<table class="list-table"><thead><tr><th>이름</th><th>학번</th><th>퀴즈</th><th>점수</th><th>정답/전체</th><th>소요시간</th><th>제출시각</th></tr></thead><tbody>';
-    subs.forEach(s=>{ const sc=Number(s.score); const bg=sc>=80?'#e6f3ea':sc>=50?'#fdf3e3':'#fbe6e3'; const tc=sc>=80?'#2f8f57':sc>=50?'#b5781c':'#c0392b';
-      h+=`<tr><td><b>${esc(s.studentName)}</b></td><td>${esc(s.studentId)}</td><td class="muted">${esc(s.quizName)}</td>
-        <td><span class="score-pill" style="background:${bg};color:${tc};">${sc}점</span></td><td>${s.correct} / ${s.total}</td>
-        <td class="muted">${esc(fmtTimeSpent(s.timeSpent))}</td><td class="muted">${esc(fmtWhen(s.submittedAt))}</td></tr>`; });
-    h+='</tbody></table>'; $('subArea').innerHTML=h;
+    const again=subs.filter(s=>s._seq>1).length;
+    const againTag = again ? `<span class="tag">✌🏻 재제출 ${again}건</span>` : '';
+    // 정렬은 한 퀴즈만 볼 때만 의미가 있다 (전체 보기는 퀴즈가 섞여 있어 줄세우기가 안 맞는다)
+    const bar = quizId ? sortBarHTML() : '';
+    $('subStats').innerHTML=`<div class="actions" style="margin-bottom:14px;"><span class="pill pill-cnt">총 ${data.totalCount||subs.length}건 제출</span><span class="tag">평균 점수 ${avg}점</span>${againTag}${cut}</div>`+bar;
+    renderSubTable();
     if(quizId) loadWordStats(quizId);   // 특정 퀴즈 선택 시 단어별 정답률
   }catch(err){ $('subArea').innerHTML=`<div class="empty"><div class="big">⚠️</div>${esc(err.message)}<br><button class="btn btn-ghost btn-sm" style="margin-top:12px;" onclick="loadSubmissions()">다시 시도</button></div>`; }
 }
@@ -1012,9 +1098,10 @@ async function loadWordStats(quizId){
 
 function downloadCSV(){
   if(!lastSubs.length){ toast('내보낼 제출 기록이 없어요.'); return; }
-  const cols=['이름','학번','퀴즈','점수','정답칸','전체칸','오답칸','소요시간','제출시각'];
+  const cols=['이름','학번','퀴즈','제출차수','점수','정답칸','전체칸','오답칸','소요시간','제출시각'];
   const esc2=v=>{ const s=String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
-  const rows=lastSubs.map(s=>[s.studentName,s.studentId,s.quizName,s.score,s.correct,s.total,s.wrong,fmtTimeSpent(s.timeSpent),fmtWhen(s.submittedAt)].map(esc2).join(','));
+  // 화면에 보이는 순서 그대로 내보낸다
+  const rows=sortSubs(lastSubs).map(s=>[s.studentName,s.studentId,s.quizName,s._seq||1,s.score,s.correct,s.total,s.wrong,fmtTimeSpent(s.timeSpent),fmtWhen(s.submittedAt)].map(esc2).join(','));
   const csv='\ufeff'+cols.join(',')+'\n'+rows.join('\n');   // BOM → 엑셀 한글 깨짐 방지
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const fname=($('subFilter').selectedOptions[0]?.text||'전체')+'_제출기록.csv';
